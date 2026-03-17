@@ -1,6 +1,7 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/ShadowScan-Web%20Auditing%20Toolkit-0a0a0a?style=for-the-badge&logo=hackaday&logoColor=white" />
+  <img src="https://img.shields.io/badge/ShadowScan-Web%20Auditing%20Toolkit-black?style=for-the-badge&logo=hackaday&logoColor=red&labelColor=black&color=red" />
 </p>
+
 
 <p align="center">
   <img src="https://img.shields.io/badge/Cybersecurity-Toolkit-Blue?style=flat-square&logo=protonvpn&logoColor=white"/>
@@ -48,18 +49,18 @@ It Combines **Powerful Multi-Threaded Scanning** With A **Clean Desktop Interfac
 ## ⚙️ Installation
 
 ```bash
-Git Clone Https://Github.Com/Your-Username/ShadowScan.Git
-Cd ShadowScan
+git clone https://github.com/ArjunBohara-CyberSecurity/ShadowScan.git
+cd ShadowScan-main
 
-Python -M Venv Venv
+python -m venv venv
 
 # Windows
-Venv\Scripts\Activate
+venv\scripts\activate
 
 # Linux / MacOS
-Source Venv/Bin/Activate
+source venv/bin/activate
 
-Pip Install -R Requirements.Txt
+pip install -r requirements.yxt
 ```
 
 ---
@@ -79,16 +80,6 @@ Python ShadowScan.Py
 3. Click **Run Audit**
 4. Monitor Live Scan Progress
 5. Export Results Via **JSON**
-
----
-
-## 📸 Interface Preview
-
-> *(Add Screenshots Here For Maximum Impact)*
-
-```
-/Screenshots/Gui.Png
-```
 
 ---
 
@@ -121,8 +112,7 @@ Python ShadowScan.Py
 If You Like ShadowScan:
 
 - ⭐ Star The Repo  
-- 🍴 Fork It  
-- 🐛 Report Issues  
+- 🍴 Fork It 
 - 🤝 Contribute  
 
 ---
