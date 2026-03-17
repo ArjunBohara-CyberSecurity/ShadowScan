@@ -100,7 +100,7 @@ python ShadowScan.Py
 
 ---
 
-## 💙 Special Thanks
+## 💙 Special Thanks For Testing Our Tool
 
 - IHA089  
 - Coding Chat Room  
