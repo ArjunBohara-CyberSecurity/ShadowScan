@@ -6,7 +6,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Cybersecurity-Toolkit-Blue?style=flat-square&logo=protonvpn&logoColor=white"/>
   <img src="https://img.shields.io/badge/Ethical%20Hacking-Enabled-Darkred?style=flat-square&logo=kalilinux&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Python-3.10+%2B-Yellow?style=flat-square&logo=python&logoColor=black"/>
+  <img src="https://img.shields.io/badge/Python-3.10%2B-Yellow?style=flat-square&logo=python&logoColor=black"/>
   <img src="https://img.shields.io/badge/Modules-150%2B-Success?style=flat-square"/>
   <img src="https://img.shields.io/badge/Status-Active-Brightgreen?style=flat-square"/>
 </p>
