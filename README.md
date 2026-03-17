@@ -60,7 +60,7 @@ venv\scripts\activate
 # Linux / MacOS
 source venv/bin/activate
 
-pip install -r requirements.yxt
+pip install -r requirements.txt
 ```
 
 ---
@@ -68,7 +68,7 @@ pip install -r requirements.yxt
 ## ▶️ Launch
 
 ```bash
-Python ShadowScan.Py
+python ShadowScan.Py
 ```
 
 ---
