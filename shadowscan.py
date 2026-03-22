@@ -1,4 +1,5 @@
 import json
+import html
 import threading
 import random
 import time
@@ -27,6 +28,10 @@ USER_AGENTS = [
 ]
 
 DEFAULT_TIMEOUT = (5, 12)
+
+CRAWL_DEPTH = 1
+MAX_PAGES = 30
+REQUEST_DELAY_MS = 150
 
 STRICT_MODE = True
 
@@ -122,12 +127,15 @@ MODULE_CATALOG = [
         ("coep", "Cross-Origin-Embedder-Policy"),
         ("corp", "Cross-Origin-Resource-Policy"),
         ("server_banner", "Server Banner Leak"),
+        ("waf_detect", "WAF Detection"),
+        ("waf_curl", "WAF Bypass"),
         ("powered_by", "X-Powered-By Leak"),
         ("server_date", "Date Header"),
         ("cookie_prefixes", "Cookie Prefixes"),
         ("cookie_path", "Cookie Path"),
         ("cookie_domain", "Cookie Domain"),
         ("set_cookie_multiple", "Multiple Set-Cookie"),
+        ("rate_limit", "Rate Limit (429)")
     ]),
     ("Discovery", [
         ("directory_brute", "Dir Brute Force"),
@@ -151,6 +159,9 @@ MODULE_CATALOG = [
         ("swagger", "Swagger/OpenAPI"),
         ("well_known", "Well-Known Paths"),
         ("directory_listing", "Directory Listing"),
+        ("crawl_discovery", "Crawl Discovery"),
+        ("param_discovery", "Parameter Discovery"),
+        ("js_endpoints", "JS Endpoint Hints")
     ]),
     ("Transport", [
         ("tls", "TLS/SSL Health"),
@@ -231,6 +242,7 @@ MODULE_CATALOG = [
         ("jwt_storage", "JWT in Storage Script"),
         ("session_in_url", "Session ID in URL"),
         ("password_http", "Password Form Over HTTP"),
+        ("auth_protected", "Protected Endpoints")
     ]),
     ("Privacy & Info", [
         ("email_disclosure", "Email Disclosure"),
@@ -314,8 +326,8 @@ class WebPentestTool(ctk.CTk):
         ctk.set_appearance_mode("dark")
 
         self.title("ShadowScan")
-        self.geometry("1280x840")
-        self.minsize(1120, 720)
+        self.geometry("1080x700")
+        self.minsize(980, 640)
 
         self.scan_vars = {}
         self.cancel_event = threading.Event()
@@ -326,38 +338,96 @@ class WebPentestTool(ctk.CTk):
 
         self._build_ui()
         self._start_idle_pulse()
-
     def _build_ui(self):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        sidebar = ctk.CTkFrame(self, width=300, corner_radius=0, fg_color="#0a0a0a")
+        sidebar = ctk.CTkFrame(self, width=280, corner_radius=0, fg_color="#0a0a0a")
         sidebar.grid(row=0, column=0, sticky="nswe")
-        sidebar.grid_rowconfigure(8, weight=1)
+        sidebar.grid_rowconfigure(17, weight=1)
 
         logo_frame = ctk.CTkFrame(sidebar, fg_color="#0f0f0f", border_color="#3a0000", border_width=1)
-        logo_frame.grid(row=0, column=0, padx=16, pady=(16, 10), sticky="we")
+        logo_frame.grid(row=0, column=0, padx=14, pady=(14, 10), sticky="we")
         logo_frame.grid_columnconfigure(0, weight=1)
-        title = ctk.CTkLabel(logo_frame, text="ShadowScan", font=("Segoe UI", 18, "bold"), text_color="#ff3333")
-        title.grid(row=0, column=0, padx=12, pady=(8, 2), sticky="w")
-        subtitle = ctk.CTkLabel(logo_frame, text="Stealth Web Audit", font=("Segoe UI", 11), text_color="#ff5555")
-        subtitle.grid(row=1, column=0, padx=12, pady=(0, 8), sticky="w")
+        ctk.CTkLabel(logo_frame, text="ShadowScan", font=("Segoe UI", 17, "bold"), text_color="#ff3333").grid(row=0, column=0, padx=10, pady=(8, 2), sticky="w")
+        ctk.CTkLabel(logo_frame, text="Stealth Web Audit", font=("Segoe UI", 11), text_color="#ff5555").grid(row=1, column=0, padx=10, pady=(0, 8), sticky="w")
 
-        ctk.CTkLabel(sidebar, text="Target URL", font=("Segoe UI", 12, "bold"), text_color="#ff3333").grid(row=1, column=0, padx=20, pady=(8, 6), sticky="w")
+        ctk.CTkLabel(sidebar, text="Target URL", font=("Segoe UI", 12, "bold"), text_color="#ff3333").grid(row=1, column=0, padx=16, pady=(6, 6), sticky="w")
         self.url_entry = ctk.CTkEntry(sidebar, placeholder_text="https://example.com", fg_color="#111111", border_color="#3a0000")
-        self.url_entry.grid(row=2, column=0, padx=20, pady=(0, 12), sticky="we")
+        self.url_entry.grid(row=2, column=0, padx=16, pady=(0, 8), sticky="we")
         self.url_entry.insert(0, "http://127.0.0.1:5001")
 
         self.thread_label = ctk.CTkLabel(sidebar, text="Threads: 10", font=("Segoe UI", 12, "bold"), text_color="#ff3333")
-        self.thread_label.grid(row=3, column=0, padx=20, pady=(8, 6), sticky="w")
-        self.thread_slider = ctk.CTkSlider(sidebar, from_=1, to=30, number_of_steps=29, fg_color="#1a1a1a", progress_color="#b30000", button_color="#b30000", button_hover_color="#ff1a1a", command=self._on_thread_change)
+        self.thread_label.grid(row=3, column=0, padx=16, pady=(6, 6), sticky="w")
+        self.thread_slider = ctk.CTkSlider(
+            sidebar,
+            from_=1,
+            to=30,
+            number_of_steps=29,
+            fg_color="#1a1a1a",
+            progress_color="#b30000",
+            button_color="#b30000",
+            button_hover_color="#ff1a1a",
+            command=self._on_thread_change
+        )
         self.thread_slider.set(10)
-        self.thread_slider.grid(row=4, column=0, padx=20, pady=(0, 10), sticky="we")
+        self.thread_slider.grid(row=4, column=0, padx=16, pady=(0, 8), sticky="we")
+
+        self.preset_label = ctk.CTkLabel(sidebar, text="Preset", font=("Segoe UI", 12, "bold"), text_color="#ff3333")
+        self.preset_label.grid(row=5, column=0, padx=16, pady=(4, 6), sticky="w")
+        self.preset_menu = ctk.CTkOptionMenu(
+            sidebar,
+            values=["Quick", "Standard", "Deep"],
+            command=self._on_preset_change,
+            fg_color="#111111",
+            button_color="#b30000",
+            button_hover_color="#ff1a1a"
+        )
+        self.preset_menu.set("Standard")
+        self.preset_menu.grid(row=6, column=0, padx=16, pady=(0, 8), sticky="we")
+
+        self.strict_var = ctk.BooleanVar(value=True)
+        self.strict_switch = ctk.CTkSwitch(
+            sidebar,
+            text="Strict Mode",
+            variable=self.strict_var,
+            fg_color="#b30000",
+            progress_color="#b30000",
+            button_color="#ff1a1a"
+        )
+        self.strict_switch.grid(row=7, column=0, padx=16, pady=(0, 8), sticky="w")
+
+        self.crawl_depth_label = ctk.CTkLabel(sidebar, text="Crawl Depth: 1", font=("Segoe UI", 12, "bold"), text_color="#ff3333")
+        self.crawl_depth_label.grid(row=8, column=0, padx=16, pady=(4, 6), sticky="w")
+        self.crawl_depth_slider = ctk.CTkSlider(
+            sidebar,
+            from_=0,
+            to=3,
+            number_of_steps=3,
+            fg_color="#1a1a1a",
+            progress_color="#b30000",
+            button_color="#b30000",
+            button_hover_color="#ff1a1a",
+            command=self._on_crawl_depth_change
+        )
+        self.crawl_depth_slider.set(1)
+        self.crawl_depth_slider.grid(row=9, column=0, padx=16, pady=(0, 8), sticky="we")
+
+        self.max_pages_label = ctk.CTkLabel(sidebar, text="Max Pages", font=("Segoe UI", 12, "bold"), text_color="#ff3333")
+        self.max_pages_label.grid(row=10, column=0, padx=16, pady=(4, 6), sticky="w")
+        self.max_pages_entry = ctk.CTkEntry(sidebar, fg_color="#111111", border_color="#3a0000")
+        self.max_pages_entry.insert(0, "30")
+        self.max_pages_entry.grid(row=11, column=0, padx=16, pady=(0, 8), sticky="we")
+
+        self.delay_label = ctk.CTkLabel(sidebar, text="Delay (ms)", font=("Segoe UI", 12, "bold"), text_color="#ff3333")
+        self.delay_label.grid(row=12, column=0, padx=16, pady=(4, 6), sticky="w")
+        self.delay_entry = ctk.CTkEntry(sidebar, fg_color="#111111", border_color="#3a0000")
+        self.delay_entry.insert(0, "150")
+        self.delay_entry.grid(row=13, column=0, padx=16, pady=(0, 8), sticky="we")
 
         button_row = ctk.CTkFrame(sidebar, fg_color="transparent")
-        button_row.grid(row=5, column=0, padx=20, pady=(0, 8), sticky="we")
+        button_row.grid(row=14, column=0, padx=16, pady=(0, 6), sticky="we")
         button_row.grid_columnconfigure((0, 1), weight=1)
-
         self.start_btn = ctk.CTkButton(button_row, text="Run Audit", command=self.start_scan, fg_color="#b30000", hover_color="#ff1a1a")
         self.start_btn.grid(row=0, column=0, padx=(0, 6), pady=6, sticky="we")
         self.stop_btn = ctk.CTkButton(button_row, text="Stop", fg_color="#1a1a1a", hover_color="#2a2a2a", command=self.stop_scan)
@@ -365,19 +435,21 @@ class WebPentestTool(ctk.CTk):
         self.stop_btn.configure(state="disabled")
 
         control_row = ctk.CTkFrame(sidebar, fg_color="transparent")
-        control_row.grid(row=6, column=0, padx=20, pady=(0, 8), sticky="we")
+        control_row.grid(row=15, column=0, padx=16, pady=(0, 6), sticky="we")
         control_row.grid_columnconfigure((0, 1), weight=1)
         ctk.CTkButton(control_row, text="Select All", fg_color="#1a1a1a", hover_color="#2a2a2a", command=self.select_all).grid(row=0, column=0, padx=(0, 6), pady=4, sticky="we")
         ctk.CTkButton(control_row, text="Clear All", fg_color="#1a1a1a", hover_color="#2a2a2a", command=self.clear_all).grid(row=0, column=1, padx=(6, 0), pady=4, sticky="we")
 
         export_row = ctk.CTkFrame(sidebar, fg_color="transparent")
-        export_row.grid(row=7, column=0, padx=20, pady=(0, 12), sticky="we")
-        export_row.grid_columnconfigure(0, weight=1)
+        export_row.grid(row=16, column=0, padx=16, pady=(0, 8), sticky="we")
+        export_row.grid_columnconfigure((0, 1), weight=1)
         self.export_btn = ctk.CTkButton(export_row, text="Export JSON", fg_color="#1a1a1a", hover_color="#2a2a2a", command=self.export_json)
-        self.export_btn.grid(row=0, column=0, pady=4, sticky="we")
+        self.export_btn.grid(row=0, column=0, padx=(0, 6), pady=4, sticky="we")
+        self.export_html_btn = ctk.CTkButton(export_row, text="Export HTML", fg_color="#1a1a1a", hover_color="#2a2a2a", command=self.export_html)
+        self.export_html_btn.grid(row=0, column=1, padx=(6, 0), pady=4, sticky="we")
 
         note = ctk.CTkLabel(sidebar, text="Authorized testing only", font=("Segoe UI", 10), text_color="#ff3333")
-        note.grid(row=9, column=0, padx=20, pady=(0, 14), sticky="w")
+        note.grid(row=17, column=0, padx=16, pady=(0, 12), sticky="w")
 
         main = ctk.CTkFrame(self, corner_radius=0, fg_color="#0a0a0a")
         main.grid(row=0, column=1, sticky="nswe")
@@ -385,31 +457,30 @@ class WebPentestTool(ctk.CTk):
         main.grid_columnconfigure(0, weight=1)
 
         header = ctk.CTkFrame(main, fg_color="transparent")
-        header.grid(row=0, column=0, sticky="we", padx=20, pady=(20, 10))
+        header.grid(row=0, column=0, sticky="we", padx=18, pady=(16, 8))
         header.grid_columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(header, text="Live Audit", font=("Segoe UI", 20, "bold"), text_color="#ff3333").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(header, text="Live Audit", font=("Segoe UI", 19, "bold"), text_color="#ff3333").grid(row=0, column=0, sticky="w")
         status_frame = ctk.CTkFrame(header, fg_color="#120000", border_color="#3a0000", border_width=1, corner_radius=12)
-        status_frame.grid(row=0, column=1, sticky="e", padx=(0, 2))
+        status_frame.grid(row=0, column=1, sticky="e")
         self.status_label = ctk.CTkLabel(status_frame, text="Idle", font=("Segoe UI", 12, "bold"), text_color="#ff3333")
         self.status_label.grid(row=0, column=0, padx=10, pady=4)
 
         self.progress = ctk.CTkProgressBar(main, progress_color="#b30000", fg_color="#1a1a1a")
-        self.progress.grid(row=1, column=0, sticky="we", padx=20)
+        self.progress.grid(row=1, column=0, sticky="we", padx=18)
         self.progress.set(0)
 
         content = ctk.CTkFrame(main, fg_color="#0a0a0a")
-        content.grid(row=2, column=0, sticky="nswe", padx=20, pady=(10, 20))
+        content.grid(row=2, column=0, sticky="nswe", padx=18, pady=(8, 18))
         content.grid_columnconfigure(1, weight=1)
         content.grid_rowconfigure(0, weight=1)
 
-        modules_panel = ctk.CTkFrame(content, width=380, fg_color="#0f0f0f", border_color="#240000", border_width=1)
-        modules_panel.grid(row=0, column=0, sticky="nswe", padx=(0, 12))
+        modules_panel = ctk.CTkFrame(content, width=320, fg_color="#0f0f0f", border_color="#240000", border_width=1)
+        modules_panel.grid(row=0, column=0, sticky="nswe", padx=(0, 10))
         modules_panel.grid_rowconfigure(2, weight=1)
 
-        ctk.CTkLabel(modules_panel, text="Modules", font=("Segoe UI", 16, "bold"), text_color="#ff3333").grid(row=0, column=0, padx=16, pady=(16, 8), sticky="w")
+        ctk.CTkLabel(modules_panel, text="Modules", font=("Segoe UI", 15, "bold"), text_color="#ff3333").grid(row=0, column=0, padx=14, pady=(14, 6), sticky="w")
         self.search_entry = ctk.CTkEntry(modules_panel, placeholder_text="Search modules...", fg_color="#111111", border_color="#3a0000")
-        self.search_entry.grid(row=1, column=0, padx=16, pady=(0, 8), sticky="we")
+        self.search_entry.grid(row=1, column=0, padx=14, pady=(0, 8), sticky="we")
         self.search_entry.bind("<KeyRelease>", self.filter_modules)
 
         self.modules_scroll = ctk.CTkScrollableFrame(modules_panel, corner_radius=0, fg_color="#0f0f0f")
@@ -421,10 +492,9 @@ class WebPentestTool(ctk.CTk):
         results_panel.grid_rowconfigure(1, weight=1)
         results_panel.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(results_panel, text="Results", font=("Segoe UI", 16, "bold"), text_color="#ff3333").grid(row=0, column=0, padx=16, pady=(16, 8), sticky="w")
+        ctk.CTkLabel(results_panel, text="Results", font=("Segoe UI", 15, "bold"), text_color="#ff3333").grid(row=0, column=0, padx=14, pady=(14, 6), sticky="w")
         self.results_text = ctk.CTkTextbox(results_panel, wrap="word", fg_color="#0b0b0b", text_color="#ff3333", font=("Consolas", 11))
-        self.results_text.grid(row=1, column=0, sticky="nswe", padx=16, pady=(0, 16))
-
+        self.results_text.grid(row=1, column=0, sticky="nswe", padx=14, pady=(0, 14))
 
     def _render_modules(self):
         for child in self.modules_scroll.winfo_children():
@@ -460,12 +530,43 @@ class WebPentestTool(ctk.CTk):
                 cb = ctk.CTkCheckBox(self.modules_scroll, text=label, variable=var, fg_color="#b30000", hover_color="#ff1a1a", text_color="#ff3333")
                 cb.pack(anchor="w", padx=20, pady=4)
 
+    def _on_preset_change(self, value):
+        if value == "Quick":
+            self.crawl_depth_slider.set(0)
+            self.max_pages_entry.delete(0, "end")
+            self.max_pages_entry.insert(0, "10")
+            self.delay_entry.delete(0, "end")
+            self.delay_entry.insert(0, "300")
+            self.strict_var.set(True)
+        elif value == "Standard":
+            self.crawl_depth_slider.set(1)
+            self.max_pages_entry.delete(0, "end")
+            self.max_pages_entry.insert(0, "30")
+            self.delay_entry.delete(0, "end")
+            self.delay_entry.insert(0, "150")
+            self.strict_var.set(True)
+        else:
+            self.crawl_depth_slider.set(2)
+            self.max_pages_entry.delete(0, "end")
+            self.max_pages_entry.insert(0, "120")
+            self.delay_entry.delete(0, "end")
+            self.delay_entry.insert(0, "80")
+            self.strict_var.set(False)
+        self._on_crawl_depth_change(self.crawl_depth_slider.get())
+
     def _on_thread_change(self, value):
         try:
             count = int(float(value))
         except Exception:
             count = int(self.thread_slider.get())
         self.thread_label.configure(text=f"Threads: {count}")
+
+    def _on_crawl_depth_change(self, value):
+        try:
+            depth = int(float(value))
+        except Exception:
+            depth = int(self.crawl_depth_slider.get())
+        self.crawl_depth_label.configure(text=f"Crawl Depth: {depth}")
 
     def select_all(self):
         for v in self.scan_vars.values():
@@ -474,6 +575,29 @@ class WebPentestTool(ctk.CTk):
     def clear_all(self):
         for v in self.scan_vars.values():
             v.set(False)
+
+    def _get_crawl_depth(self):
+        try:
+            return int(float(self.crawl_depth_slider.get()))
+        except Exception:
+            return 1
+
+    def _get_max_pages(self):
+        try:
+            val = int(self.max_pages_entry.get().strip())
+            return max(1, min(val, 500))
+        except Exception:
+            return 30
+
+    def _get_delay_ms(self):
+        try:
+            val = int(self.delay_entry.get().strip())
+            return max(0, min(val, 5000))
+        except Exception:
+            return 150
+
+    def _get_strict_mode(self):
+        return bool(self.strict_var.get())
 
     def start_scan(self):
         url = self.url_entry.get().strip()
@@ -508,7 +632,7 @@ class WebPentestTool(ctk.CTk):
 
     def execute_scan(self, url, scan_types):
         try:
-            scanner = ProfessionalScanner(url, self.thread_slider.get(), self.cancel_event)
+            scanner = ProfessionalScanner(url, self.thread_slider.get(), self.cancel_event, self._get_crawl_depth(), self._get_max_pages(), self._get_delay_ms(), self._get_strict_mode())
             results = scanner.run_all_modules(scan_types)
         except Exception as exc:
             results = {"engine": [{"type": "Scanner Error", "location": str(exc)}]}
@@ -538,6 +662,46 @@ class WebPentestTool(ctk.CTk):
         self.idle_pulse = True
         self.start_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
+
+    def export_html(self):
+        if not self.last_results:
+            messagebox.showwarning("No Data", "Run a scan first to export results.")
+            return
+        default_name = f"shadowscan_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".html",
+            filetypes=[("HTML Files", "*.html")],
+            initialfile=default_name
+        )
+        if not path:
+            return
+        rows = []
+        total = 0
+        for module, findings in self.last_results.items():
+            if not findings:
+                continue
+            for f in findings:
+                total += 1
+                rows.append(f"<tr><td>{html.escape(module)}</td><td>{html.escape(str(f.get('type')))}</td><td>{html.escape(str(f.get('location')))}</td><td>{html.escape(str(f.get('payload','')))}</td></tr>")
+        table = "\n".join(rows) or "<tr><td colspan='4'>No findings</td></tr>"
+        html_doc = f"""<!doctype html>
+<html><head><meta charset='utf-8'><title>ShadowScan Report</title>
+<style>body{{background:#0b0b0b;color:#ff3333;font-family:Consolas,monospace}}
+.card{{border:1px solid #3a0000;padding:16px;margin:16px;background:#0f0f0f}}
+.table{{width:100%;border-collapse:collapse}}
+.table th,.table td{{border:1px solid #3a0000;padding:6px;text-align:left}}
+</style></head><body>
+<div class='card'><h2>ShadowScan Report</h2>
+<p>Target: {html.escape(self.url_entry.get().strip())}</p>
+<p>Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+<p>Total Findings: {total}</p></div>
+<div class='card'><table class='table'><thead><tr><th>Module</th><th>Type</th><th>Location</th><th>Payload</th></tr></thead><tbody>
+{table}
+</tbody></table></div>
+</body></html>"""
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(html_doc)
+        messagebox.showinfo("Exported", f"Report saved to:\n{path}")
 
     def export_json(self):
         if not self.last_results:
@@ -606,13 +770,20 @@ class WebPentestTool(ctk.CTk):
         self.after(450, lambda: self._pulse_start_button(tick + 1))
 
 class ProfessionalScanner:
-    def __init__(self, base_url, thread_limit, cancel_event):
+    def __init__(self, base_url, thread_limit, cancel_event, crawl_depth=1, max_pages=30, delay_ms=150, strict_mode=True):
         self.base_url = base_url.rstrip("/")
         self.threads = max(1, int(thread_limit))
         self.cancel_event = cancel_event
+        self.crawl_depth = max(0, int(crawl_depth))
+        self.max_pages = max(1, int(max_pages))
+        self.delay_ms = max(0, int(delay_ms))
+        self.strict_mode = bool(strict_mode)
         self.session = self._build_session()
         self._main_response_cache = None
+        self.rate_limit_hits = 0
         self._tls_cache = None
+        self.delay_ms = REQUEST_DELAY_MS
+        self._last_request_ts = 0.0
 
     def _build_session(self):
         session = requests.Session()
@@ -638,16 +809,69 @@ class ProfessionalScanner:
     def _cancelled(self):
         return self.cancel_event.is_set()
 
+
+    def _baseline_404(self):
+        if self._main_response_cache is None:
+            self._fetch_main()
+        if getattr(self, "_baseline_404_cache", None) is not None:
+            return self._baseline_404_cache
+        rand_path = f"__shadowscan_{random.randint(100000, 999999)}__"
+        url = f"{self.base_url}/{rand_path}"
+        res = self._request(url, allow_redirects=True)
+        baseline = {
+            "status": res.status_code if res else None,
+            "len": len(res.text) if res and res.text else 0,
+            "title": "",
+            "text": (res.text or "")[:4000] if res else ""
+        }
+        if res and res.text:
+            soup = BeautifulSoup(res.text, "html.parser")
+            if soup.title and soup.title.text:
+                baseline["title"] = soup.title.text.strip().lower()
+        self._baseline_404_cache = baseline
+        return baseline
+
+    def _is_soft_404(self, res, baseline):
+        if not res:
+            return True
+        if baseline.get("status") in [403, 401] and res.status_code == baseline.get("status"):
+            return True
+        text = res.text or ""
+        if not text:
+            return res.status_code in [404]
+        # Compare length and title against baseline
+        blen = baseline.get("len", 0) or 0
+        rlen = len(text)
+        if blen and rlen:
+            diff = abs(rlen - blen) / max(blen, rlen)
+            if diff < 0.08:
+                btitle = baseline.get("title")
+                if btitle:
+                    soup = BeautifulSoup(text, "html.parser")
+                    title = soup.title.text.strip().lower() if soup.title and soup.title.text else ""
+                    if title == btitle:
+                        return True
+                # fallback: shared snippet similarity
+                btxt = baseline.get("text", "")
+                if btxt and btxt in text:
+                    return True
+        return False
+
     def _request(self, url, method="GET", data=None, params=None, headers=None, allow_redirects=True):
         if self._cancelled():
             return None
+        self._sleep_if_needed()
         try:
             merged_headers = {'User-Agent': random.choice(USER_AGENTS)}
             if headers:
                 merged_headers.update(headers)
             if method.upper() == "POST":
-                return self.session.post(url, data=data, params=params, headers=merged_headers, timeout=DEFAULT_TIMEOUT, allow_redirects=allow_redirects)
-            return self.session.get(url, params=params, headers=merged_headers, timeout=DEFAULT_TIMEOUT, allow_redirects=allow_redirects)
+                res = self.session.post(url, data=data, params=params, headers=merged_headers, timeout=DEFAULT_TIMEOUT, allow_redirects=allow_redirects)
+            else:
+                res = self.session.get(url, params=params, headers=merged_headers, timeout=DEFAULT_TIMEOUT, allow_redirects=allow_redirects)
+            if res is not None and res.status_code == 429:
+                self.rate_limit_hits += 1
+            return res
         except Exception:
             return None
 
@@ -660,6 +884,16 @@ class ProfessionalScanner:
             return base.scheme == other.scheme and base.hostname == other.hostname and base_port == other_port
         except Exception:
             return False
+
+    def _sleep_if_needed(self):
+        if self.delay_ms <= 0:
+            return
+        now = time.monotonic()
+        min_interval = self.delay_ms / 1000.0
+        elapsed = now - self._last_request_ts
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        self._last_request_ts = time.monotonic()
 
     def _get_forms(self, html):
         soup = BeautifulSoup(html, 'html.parser')
@@ -700,8 +934,42 @@ class ProfessionalScanner:
             self._tls_cache = None
             return None
 
+    def _crawl(self):
+        if self.crawl_depth <= 0:
+            return {self.base_url}, []
+        visited = set()
+        forms = []
+        queue = [(self.base_url, 0)]
+        while queue and len(visited) < self.max_pages and not self._cancelled():
+            url, depth = queue.pop(0)
+            if url in visited:
+                continue
+            visited.add(url)
+            res = self._request(url)
+            if not res or not res.text:
+                continue
+            soup = BeautifulSoup(res.text, 'html.parser')
+            for form in soup.find_all('form'):
+                action = form.get('action') or ''
+                action_url = urljoin(url + '/', action)
+                method = form.get('method', 'GET').upper()
+                inputs = [i.get('name') for i in form.find_all(['input','textarea']) if i.get('name')]
+                if inputs:
+                    forms.append((action_url, method, inputs))
+            if depth >= self.crawl_depth:
+                continue
+            for tag in soup.find_all(['a','link','script']):
+                href = tag.get('href') or tag.get('src') or ''
+                if not href or href.startswith('mailto:') or href.startswith('javascript:'):
+                    continue
+                next_url = urljoin(url, href.split('#')[0])
+                if self._same_origin(next_url) and next_url not in visited:
+                    queue.append((next_url, depth + 1))
+        return visited, forms
+
     def run_all_modules(self, scan_types):
         results = {}
+        self._crawl_cache = self._crawl()
         with ThreadPoolExecutor(max_workers=self.threads) as main_exec:
             future_to_mod = {
                 main_exec.submit(getattr(self, f"_scan_{st}")): st
@@ -730,7 +998,7 @@ class ProfessionalScanner:
         if not orig_res:
             return []
 
-        forms = self._get_forms(orig_res.text)
+        forms = self._crawl_cache[1] if hasattr(self, "_crawl_cache") else self._get_forms(orig_res.text)
         for action, method, inputs in forms:
             if self._cancelled():
                 return findings
@@ -755,7 +1023,7 @@ class ProfessionalScanner:
         if not res_main:
             return []
 
-        forms = self._get_forms(res_main.text)
+        forms = self._crawl_cache[1] if hasattr(self, "_crawl_cache") else self._get_forms(res_main.text)
         for action, method, inputs in forms:
             if self._cancelled():
                 return findings
@@ -852,6 +1120,11 @@ class ProfessionalScanner:
                 if res and res.status_code in [200, 301, 302, 403]:
                     findings.append({"type": f"Accessible Path ({res.status_code})", "location": urljoin(base, directory)})
         return findings
+
+    def _scan_rate_limit(self):
+        if self.rate_limit_hits > 0:
+            return [{"type": "Rate Limited", "location": f"429 hits: {self.rate_limit_hits}"}]
+        return []
 
     def _scan_cors(self):
         if self._cancelled():
@@ -961,8 +1234,16 @@ class ProfessionalScanner:
         res = self._request(self.base_url)
         if not res:
             return findings
-        soup = BeautifulSoup(res.text, 'html.parser')
-        for form in soup.find_all("form"):
+        forms = self._crawl_cache[1] if hasattr(self, "_crawl_cache") else self._get_forms(res.text)
+        for action, method, inputs in forms:
+            if method != "POST":
+                continue
+            lowered = [i.lower() for i in inputs]
+            if not any("csrf" in name or "token" in name for name in lowered):
+                findings.append({"type": "Form Missing CSRF Token", "location": action})
+        return findings
+        forms = self._crawl_cache[1] if hasattr(self, "_crawl_cache") else self._get_forms(res.text)
+        for action, method, inputs in forms:
             method = form.get("method", "GET").upper()
             if method != "POST":
                 continue
@@ -1059,6 +1340,69 @@ class ProfessionalScanner:
                 findings.append({"type": "HTTP Redirects to HTTPS", "location": location})
         return findings
 
+    def _scan_crawl_discovery(self):
+        if not hasattr(self, "_crawl_cache"):
+            return []
+        urls = list(self._crawl_cache[0])
+        return [{"type": "Discovered URL", "location": u} for u in urls[:50]]
+
+    def _scan_param_discovery(self):
+        if not hasattr(self, "_crawl_cache"):
+            return []
+        params = set()
+        for u in self._crawl_cache[0]:
+            parsed = urlparse(u)
+            if parsed.query:
+                for part in parsed.query.split('&'):
+                    if '=' in part:
+                        params.add(part.split('=')[0])
+        for _, _, inputs in self._crawl_cache[1]:
+            for name in inputs:
+                params.add(name)
+        return [{"type": "Parameter", "location": p} for p in sorted(params)]
+
+    def _scan_js_endpoints(self):
+        if not hasattr(self, "_crawl_cache"):
+            return []
+        findings = []
+        for u in self._crawl_cache[0]:
+            if u.endswith('.js'):
+                res = self._request(u)
+                if not res or not res.text:
+                    continue
+                for m in re.findall(r"/api/[a-zA-Z0-9_\-/]+", res.text):
+                    findings.append({"type": "JS Endpoint", "location": m})
+        return findings
+
+    def _scan_auth_protected(self):
+        findings = []
+        for path in ["/admin", "/dashboard", "/account", "/settings"]:
+            url = self.base_url + path
+            res = self._request(url, allow_redirects=False)
+            if res and res.status_code in [401, 403]:
+                findings.append({"type": "Protected (401/403)", "location": url})
+            elif res and res.status_code in [301, 302, 303, 307, 308] and res.headers.get('Location',''):
+                findings.append({"type": "Redirect to Login", "location": url})
+        return findings
+
+    def _scan_waf_detect(self):
+        res = self._request(self.base_url)
+        if not res:
+            return []
+        signatures = ["cloudflare", "sucuri", "akamai", "imperva", "f5", "barracuda", "awswaf"]
+        header_blob = " ".join([f"{k}:{v}" for k,v in res.headers.items()]).lower()
+        body = (res.text or "").lower()
+        for sig in signatures:
+            if sig in header_blob or sig in body:
+                return [{"type": "WAF Detected", "location": sig}]
+        return []
+
+
+    def _scan_waf_curl(self):
+        url = self.base_url
+        cmd = f"curl -I -L --max-time 15 '{url}'"
+        return [{"type": "Safe Curl Command", "location": cmd}]
+
     def _scan_https_redirect_chain(self):
         if self._cancelled():
             return []
@@ -1075,12 +1419,27 @@ class ProfessionalScanner:
             return []
         findings = []
         base = self.base_url + "/"
+        baseline = self._baseline_404()
         with ThreadPoolExecutor(max_workers=min(self.threads, 12)) as exec_pool:
-            futures = {exec_pool.submit(self._request, urljoin(base, p)): p for p in paths}
+            futures = {exec_pool.submit(self._request, urljoin(base, p), None, None, None, False): p for p in paths}
             for future in as_completed(futures):
                 path = futures[future]
                 res = future.result()
-                if res and res.status_code in [200, 206, 301, 302, 403]:
+                if not res:
+                    continue
+                # Handle redirects: ignore redirects back to home
+                if res.status_code in [301, 302, 303, 307, 308]:
+                    loc = res.headers.get("Location", "")
+                    if not loc:
+                        continue
+                    # normalize
+                    if loc == "/" or loc == self.base_url or loc == self.base_url + "/":
+                        continue
+                    findings.append({"type": f"Redirect ({res.status_code})", "location": urljoin(base, path)})
+                    continue
+                if res.status_code in [200, 206, 403]:
+                    if self._is_soft_404(res, baseline):
+                        continue
                     findings.append({"type": f"Path Found ({res.status_code})", "location": urljoin(base, path)})
         return findings
 
@@ -1104,10 +1463,9 @@ class ProfessionalScanner:
             "cookie_prefixes", "cookie_path", "cookie_domain", "set_cookie_multiple",
             "remember_me", "oauth_links"
         }
-        if STRICT_MODE and key in heuristic_keys:
-            return findings
-
         findings = []
+        if self.strict_mode and key in heuristic_keys:
+            return findings
         headers = res.headers
         html = res.text or ""
         soup = BeautifulSoup(html, "html.parser")
